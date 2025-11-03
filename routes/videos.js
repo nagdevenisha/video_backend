@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
-const Video = require('../models/Video');
+const Video = require('../models/video');
 
 // Validation middleware
 const videoValidation = [
