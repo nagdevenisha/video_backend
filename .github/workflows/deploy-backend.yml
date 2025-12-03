@@ -2,8 +2,7 @@ name: Deploy Node.js Backend to EC2
 
 on:
   push:
-    branches:
-      - main          # or master
+    branches: [main]
 
 jobs:
   deploy:
@@ -19,49 +18,39 @@ jobs:
           node-version: '18'
           cache: 'npm'
 
-      - name: Install dependencies (for build only)
+      - name: Install dependencies
         run: npm ci
 
-      # Remove or uncomment if you use TypeScript
-      # - name: Build TypeScript
-      #   run: npm run build
-
-      # Upload everything EXCEPT node_modules and git files
-      - name: Deploy code to EC2
+      - name: Upload code to EC2
         uses: appleboy/scp-action@v0.1.4
         with:
-          host: ${{ secrets.EC2_HOST }}
+          host: ${{ secrets.EC2_HOST}}
           username: ubuntu
-          key: ${{ secrets.EC2_SSH_KEY }}
+          key: ${{ secrets.EC2_SSH_KEY}}
           source: "."
-          target: "/var/www/backend-temp"
+          target: "/home/ubuntu/backend-new-code"
           strip_components: 1
           overwrite: true
 
-      # Final step: move code + restart with PM2
-      - name: Install deps + restart backend restart
+      - name: Deploy + restart backend
         uses: appleboy/ssh-action@v0.1.7
         with:
-          host: ${{ secrets.EC2_HOST }}
+          host: ${{ secrets.EC2_HOST}}
           username: ubuntu
-          key: ${{ secrets.EC2_SSH_KEY }}
+          key: ${{ secrets.EC2_SSH_KEY}}
           script: |
-            # Replace old code atomically
-            sudo rsync -av --delete /var/www/backend-temp/ /var/www/backend/
+            sudo rsync -av --delete /home/ubuntu/backend-new-code/ /var/www/backend/
 
             cd /var/www/backend
 
-            # Production install
             npm ci --omit=dev
 
-            # Restart the app exactly like you tested manually
             pm2 delete backend 2>/dev/null || true
             pm2 start "node server.js" --name backend
 
             pm2 save
 
-            echo "Backend successfully deployed and running on port 5000"
+            echo "Backend is now running on port 5000"
             pm2 status
 
-            # Clean up temp folder
-            rm -rf /var/www/backend-temp
+            rm -rf /home/ubuntu/backend-new-code
