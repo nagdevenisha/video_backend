@@ -1,33 +1,62 @@
-name: Deploy Backend
+name: Deploy Node.js Backend to EC2
 
 on:
   push:
     branches:
-      - main
+      - main        # change to master if needed
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '18'
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
 
-    - name: Deploy backend via SSH
-      uses: appleboy/ssh-action@v0.1.8
-      with:
-        host: ${{ secrets.EC2_HOST }}
-        username: ubuntu
-        port: 22 
-        key: ${{ secrets.EC2_SSH_KEY }}
-        script: |
-         cd /home/ubuntu/video_backend
-         git pull origin main
-         npm install
-         pm2 restart backend
+      - name: Install dependencies
+        run: npm ci
 
+      # If you use TypeScript → uncomment next line
+      # - name: Build TypeScript
+      #   run: npm run build
+
+      - name: Rsync code to EC2 (skip node_modules)
+        uses: burnett01/rsync-deployments@7.0.1
+        with:
+          switches: -avzr --delete
+          path: .
+          remote_path: /var/www/backend/
+          remote_host: ${{ secrets.EC2_HOST }}
+          remote_user: ubuntu
+          remote_key: ${{ secrets.EC2_SSH_KEY }}
+          # Don't send node_modules or .git
+          exclude: node_modules/, .git/, .github/
+
+      - name: Install deps + Restart backend with PM2
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /var/www/backend
+
+            # Install only production dependencies
+            npm ci --omit=dev
+
+            # Start or restart the app (change "node server.js" if your start command is different)
+            pm2 delete backend 2>/dev/null || true
+            pm2 start "node server.js" --name backend --env production
+            # OR if your package.json has "start": "node dist/index.js"
+            # pm2 start npm --name backend -- run start
+
+            pm2 save
+            pm2 startup systemd -u ubuntu --hp /home/ubuntu   # run only once ever!
+
+            echo "Backend deployed & running on port $(pm2 show backend | grep 'listening' | awk '{print $8}' || echo 3000)"
