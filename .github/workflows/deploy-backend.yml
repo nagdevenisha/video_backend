@@ -3,7 +3,7 @@ name: Deploy Node.js Backend to EC2
 on:
   push:
     branches:
-      - main        # change to master if needed
+      - main          # or master
 
 jobs:
   deploy:
@@ -19,39 +19,49 @@ jobs:
           node-version: '18'
           cache: 'npm'
 
-      - name: Install dependencies
+      - name: Install dependencies (for build only)
         run: npm ci
 
-      # If you use TypeScript → uncomment next line
+      # Remove or uncomment if you use TypeScript
       # - name: Build TypeScript
       #   run: npm run build
 
-      - name: Rsync code to EC2 (skip node_modules)
-        uses: burnett01/rsync-deployments@7.0.1
+      # Upload everything EXCEPT node_modules and git files
+      - name: Deploy code to EC2
+        uses: appleboy/scp-action@v0.1.4
         with:
-          switches: -avzr --delete
-          path: .
-          remote_path: /var/www/backend/
-          remote_host: ${{ secrets.EC2_HOST }}
-          remote_user: ubuntu
-          remote_key: ${{ secrets.EC2_SSH_KEY }}
-          # Don't send node_modules or .git
-          exclude: node_modules/, .git/, .github/
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "."
+          target: "/var/www/backend-temp"
+          strip_components: 1
+          overwrite: true
 
-      - name: Restart backend with PM2
+      # Final step: move code + restart with PM2
+      - name: Install deps + restart backend restart
         uses: appleboy/ssh-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            # Replace old code atomically
+            sudo rsync -av --delete /var/www/backend-temp/ /var/www/backend/
+
             cd /var/www/backend
 
+            # Production install
             npm ci --omit=dev
 
-            # Change "server.js" and port if needed
-            pm2 restart backend || pm2 start "node server.js" --name backend
+            # Restart the app exactly like you tested manually
+            pm2 delete backend 2>/dev/null || true
+            pm2 start "node server.js" --name backend
 
             pm2 save
 
-            echo "Backend deployed successfully!"
+            echo "Backend successfully deployed and running on port 5000"
+            pm2 status
+
+            # Clean up temp folder
+            rm -rf /var/www/backend-temp
