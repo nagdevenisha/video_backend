@@ -26,8 +26,8 @@ jobs:
         port: 22 
         key: ${{ secrets.EC2_SSH_KEY }}
         script: |
-           cd /home/ubuntu/backend
-           git pull origin main
-           npm install
-           pm2 restart backend
-           pm2 ls
+         cd /home/ubuntu/video_backend
+         git pull origin main
+         npm install
+         pm2 restart backend
+
