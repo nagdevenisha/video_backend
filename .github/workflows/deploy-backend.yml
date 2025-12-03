@@ -38,7 +38,7 @@ jobs:
           # Don't send node_modules or .git
           exclude: node_modules/, .git/, .github/
 
-      - name: Install deps + Restart backend with PM2
+      - name: Restart backend with PM2
         uses: appleboy/ssh-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -47,16 +47,11 @@ jobs:
           script: |
             cd /var/www/backend
 
-            # Install only production dependencies
             npm ci --omit=dev
 
-            # Start or restart the app (change "node server.js" if your start command is different)
-            pm2 delete backend 2>/dev/null || true
-            pm2 start "node server.js" --name backend --env production
-            # OR if your package.json has "start": "node dist/index.js"
-            # pm2 start npm --name backend -- run start
+            # Change "server.js" and port if needed
+            pm2 restart backend || pm2 start "node server.js" --name backend
 
             pm2 save
-            pm2 startup systemd -u ubuntu --hp /home/ubuntu   # run only once ever!
 
-            echo "Backend deployed & running on port $(pm2 show backend | grep 'listening' | awk '{print $8}' || echo 3000)"
+            echo "Backend deployed successfully!"
